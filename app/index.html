@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Text Pressure Demo</title>
+
+  <style>
+    /* page + animated background */
+    :root{
+      --bg-a: #071024;
+      --bg-b: #00121a;
+      --bg-c: #052b3a;
+      --overlay: rgba(255,255,255,0.03);
+    }
+
+    html,body{height:100%;margin:0;}
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+      margin:0;
+      background: transparent;
+      overflow:hidden;
+      color:#eee;
+      position:relative;
+    }
+
+    /* animated moving gradient background */
+    .animated-bg{
+      position:fixed;
+      inset:0;
+      z-index:0;
+      pointer-events:none;
+      background: linear-gradient(120deg,var(--bg-a),var(--bg-b),var(--bg-c));
+      background-size: 600% 600%;
+      animation: bgShift 18s ease infinite;
+      filter: contrast(1.05) saturate(1.1);
+    }
+
+    @keyframes bgShift{
+      0%{background-position:0% 50%}
+      50%{background-position:100% 50%}
+      100%{background-position:0% 50%}
+    }
+
+    /* subtle moving radial light to emphasize the text area */
+    .radial-spot{
+      position:fixed;
+      left:50%;
+      top:50%;
+      transform:translate(-50%,-60%);
+      width:140vmax;
+      height:140vmax;
+      pointer-events:none;
+      z-index:0;
+      background: radial-gradient(ellipse at center, rgba(255,255,255,0.03) 0%, transparent 30%);
+      mix-blend-mode: overlay;
+      animation: spotFloat 8s ease-in-out infinite;
+      opacity:0.9;
+    }
+    @keyframes spotFloat{
+      0%{transform:translate(-52%,-60%) scale(1)}
+      50%{transform:translate(-48%,-62%) scale(1.02)}
+      100%{transform:translate(-52%,-60%) scale(1)}
+    }
+
+    /* container sits above animated background */
+    .container { 
+      position: relative;
+      z-index: 2;
+      text-align:center; 
+      padding:2rem; 
+      width:100%; 
+      max-width:960px; 
+      height:360px; 
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      box-sizing:border-box;
+    }
+
+    /* basic fallback styling for the title area */
+    .text-pressure-title { pointer-events: none; user-select: none; -webkit-user-select: none; }
+    .flex { display:flex; justify-content:space-between; }
+
+    /* optional faint grain overlay */
+    .grain {
+      position:fixed;
+      inset:0;
+      z-index:1;
+      pointer-events:none;
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="none"/><circle cx="2" cy="2" r="0.6" fill="%23ffffff" opacity="0.02"/></svg>');
+      opacity:0.9;
+      mix-blend-mode: soft-light;
+    }
+  </style>
+</head>
+<body>
+  <!-- animated background layers -->
+  <div class="animated-bg" aria-hidden="true"></div>
+  <div class="radial-spot" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <div class="container">
+    <div id="root" style="width:100%; height:100%"></div>
+  </div>
+
+  <!-- React + Babel (for quick demo without a bundler) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- TextPressure component and mount -->
+  <script type="text/babel">
+    const { useEffect, useRef, useState } = React;
+
+    const TextPressure = ({
+      text = 'Compressa',
+      fontFamily = 'Compressa VF',
+      fontUrl = 'https://res.cloudinary.com/dr6lvwubh/raw/upload/v1529908256/CompressaPRO-GX.woff2',
+
+      width = true,
+      weight = true,
+      italic = true,
+      alpha = false,
+
+      flex = true,
+      stroke = false,
+      scale = false,
+
+      textColor = '#FFFFFF',
+      strokeColor = '#FF0000',
+      className = '',
+
+      minFontSize = 24
+    }) => {
+      const containerRef = useRef(null);
+      const titleRef = useRef(null);
+      const spansRef = useRef([]);
+
+      const mouseRef = useRef({ x: 0, y: 0 });
+      const cursorRef = useRef({ x: 0, y: 0 });
+
+      const [fontSize, setFontSize] = useState(minFontSize);
+      const [scaleY, setScaleY] = useState(1);
+      const [lineHeight, setLineHeight] = useState(1);
+
+      const chars = text.split('');
+
+      const dist = (a, b) => {
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        return Math.sqrt(dx * dx + dy * dy);
+      };
+
+      useEffect(() => {
+        const handleMouseMove = e => {
+          cursorRef.current.x = e.clientX;
+          cursorRef.current.y = e.clientY;
+        };
+        const handleTouchMove = e => {
+          const t = e.touches[0];
+          cursorRef.current.x = t.clientX;
+          cursorRef.current.y = t.clientY;
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+        if (containerRef.current) {
+          const { left, top, width, height } = containerRef.current.getBoundingClientRect();
+          mouseRef.current.x = left + width / 2;
+          mouseRef.current.y = top + height / 2;
+          cursorRef.current.x = mouseRef.current.x;
+          cursorRef.current.y = mouseRef.current.y;
+        }
+
+        return () => {
+          window.removeEventListener('mousemove', handleMouseMove);
+          window.removeEventListener('touchmove', handleTouchMove);
+        };
+      }, []);
+
+      const setSize = () => {
+        if (!containerRef.current || !titleRef.current) return;
+
+        const { width: containerW, height: containerH } = containerRef.current.getBoundingClientRect();
+
+        let newFontSize = containerW / (chars.length / 2);
+        newFontSize = Math.max(newFontSize, minFontSize);
+
+        setFontSize(newFontSize);
+        setScaleY(1);
+        setLineHeight(1);
+
+        requestAnimationFrame(() => {
+          if (!titleRef.current) return;
+          const textRect = titleRef.current.getBoundingClientRect();
+
+          if (scale && textRect.height > 0) {
+            const yRatio = containerH / textRect.height;
+            setScaleY(yRatio);
+            setLineHeight(yRatio);
+          }
+        });
+      };
+
+      useEffect(() => {
+        setSize();
+        window.addEventListener('resize', setSize);
+        return () => window.removeEventListener('resize', setSize);
+      }, [scale, text]);
+
+      useEffect(() => {
+        let rafId;
+        const animate = () => {
+          mouseRef.current.x += (cursorRef.current.x - mouseRef.current.x) / 15;
+          mouseRef.current.y += (cursorRef.current.y - mouseRef.current.y) / 15;
+
+          if (titleRef.current) {
+            const titleRect = titleRef.current.getBoundingClientRect();
+            const maxDist = titleRect.width / 2;
+
+            spansRef.current.forEach(span => {
+              if (!span) return;
+
+              const rect = span.getBoundingClientRect();
+              const charCenter = {
+                x: rect.x + rect.width / 2,
+                y: rect.y + rect.height / 2
+              };
+
+              const d = dist(mouseRef.current, charCenter);
+
+              const getAttr = (distance, minVal, maxVal) => {
+                const val = maxVal - Math.abs((maxVal * distance) / maxDist);
+                return Math.max(minVal, val + minVal);
+              };
+
+              const wdth = width ? Math.floor(getAttr(d, 5, 200)) : 100;
+              const wght = weight ? Math.floor(getAttr(d, 100, 900)) : 400;
+              const italVal = italic ? getAttr(d, 0, 1).toFixed(2) : 0;
+              const alphaVal = alpha ? getAttr(d, 0, 1).toFixed(2) : 1;
+
+              span.style.opacity = alphaVal;
+              span.style.fontVariationSettings = `'wght' ${wght}, 'wdth' ${wdth}, 'ital' ${italVal}`;
+            });
+          }
+
+          rafId = requestAnimationFrame(animate);
+        };
+
+        animate();
+        return () => cancelAnimationFrame(rafId);
+      }, [width, weight, italic, alpha, chars.length]);
+
+      const dynamicClassName = [className, flex ? 'flex' : '', stroke ? 'stroke' : ''].filter(Boolean).join(' ');
+
+      return (
+        <div
+          ref={containerRef}
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: '100%',
+            background: 'transparent'
+          }}
+        >
+          <style>{`
+            @font-face {
+              font-family: '${fontFamily}';
+              src: url('${fontUrl}');
+              font-style: normal;
+            }
+
+            .flex {
+              display: flex;
+              justify-content: space-between;
+            }
+
+            .stroke span {
+              position: relative;
+              color: ${textColor};
+            }
+            .stroke span::after {
+              content: attr(data-char);
+              position: absolute;
+              left: 0;
+              top: 0;
+              color: transparent;
+              z-index: -1;
+              -webkit-text-stroke-width: 3px;
+              -webkit-text-stroke-color: ${strokeColor};
+            }
+
+            .text-pressure-title {
+              color: ${textColor};
+            }
+          `}</style>
+
+          <h1
+            ref={titleRef}
+            className={`text-pressure-title ${dynamicClassName}`}
+            style={{
+              fontFamily,
+              textTransform: 'uppercase',
+              fontSize: fontSize,
+              lineHeight,
+              transform: `scale(1, ${scaleY})`,
+              transformOrigin: 'center top',
+              margin: 0,
+              textAlign: 'center',
+              userSelect: 'none',
+              whiteSpace: 'nowrap',
+              fontWeight: 100,
+              width: '100%'
+            }}
+          >
+            {chars.map((char, i) => (
+              <span
+                key={i}
+                ref={el => (spansRef.current[i] = el)}
+                data-char={char}
+                style={{
+                  display: 'inline-block',
+                  color: stroke ? undefined : textColor
+                }}
+              >
+                {char}
+              </span>
+            ))}
+          </h1>
+        </div>
+      );
+    };
+
+    function App() {
+      return (
+        <div style={{width: '100%', height: '100%'}}>
+          <div style={{position: 'relative', height: '100%'}}>
+            <TextPressure
+              text="SUMAYYA"
+              flex={true}
+              alpha={false}
+              stroke={false}
+              width={true}
+              weight={true}
+              italic={true}
+              textColor="#ffffff"
+              strokeColor="#ff0000"
+              minFontSize={36}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
